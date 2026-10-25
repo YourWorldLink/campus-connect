@@ -1,0 +1,6 @@
+vendor/
+webview2.nupkg
+dist/
+release/
+artifacts/
+*.user
