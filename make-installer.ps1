@@ -15,7 +15,7 @@ if ($bytes.Length -lt 3 -or $bytes[0] -ne 0xEF -or $bytes[1] -ne 0xBB -or $bytes
 
 # VIProductVersion 需要四段数字。
 $version4 = if ($AppVersion -match '^\d+\.\d+$') { "$AppVersion.0.0" } else { $AppVersion }
-$out = Join-Path $PSScriptRoot "release\校园网一键连接-$AppVersion-安装程序.exe"
+$out = Join-Path $PSScriptRoot "release\CampusConnect-$AppVersion-setup.exe"
 
 & $makensis "/DAPP_VERSION=$AppVersion" "/DAPP_VERSION4=$version4" "/DSOURCE_DIR=$DeliveryPath" "/DOUT_FILE=$out" $nsi
 if ($LASTEXITCODE -ne 0) { throw 'makensis 编译失败。' }

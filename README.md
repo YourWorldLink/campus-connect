@@ -95,8 +95,8 @@ Add-Type -AssemblyName System.IO.Compression.FileSystem
 | --- | --- |
 | `build.ps1` | 编译程序，运行核心测试与渲染测试 |
 | `verify-ui.ps1` | 运行真实 WebView2 集成测试，并生成三种窗口尺寸的界面截图 |
-| `package.ps1` | 生成 `release/校园网一键连接-v<版本>/` 与 zip |
-| `make-installer.ps1` | 生成安装包 `release/校园网一键连接-<版本>-安装程序.exe` |
+| `package.ps1` | 生成 `release/CampusConnect-v<版本>/` 与 `CampusConnect-<版本>-win64.zip` |
+| `make-installer.ps1` | 生成安装包 `release/CampusConnect-<版本>-setup.exe` |
 | `install.ps1` | 从发布目录创建桌面快捷方式并启动 |
 | `update-ui.ps1` | 串起「打包 → 安装包 → 激活测试 → 快捷方式」 |
 | `repair.ps1` | `build.ps1` + `update-ui.ps1` |
