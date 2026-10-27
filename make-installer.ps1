@@ -13,11 +13,15 @@ if ($bytes.Length -lt 3 -or $bytes[0] -ne 0xEF -or $bytes[1] -ne 0xBB -or $bytes
     throw 'installer.nsi 缺少 UTF-8 BOM，其中的中文会被 makensis 误读。'
 }
 
-# VIProductVersion 需要四段数字。
-$version4 = if ($AppVersion -match '^\d+\.\d+$') { "$AppVersion.0.0" } else { $AppVersion }
+# 四段版本号由 version.ps1 统一算好（VIProductVersion 要求恰好四段）。
+$deliveredExe = Join-Path $DeliveryPath 'CampusConnect.exe'
+$deliveredVersion = (Get-Item -LiteralPath $deliveredExe).VersionInfo.ProductVersion
+if ($deliveredVersion -ne $AppVersion) {
+    throw "交付目录里的 exe 版本是 '$deliveredVersion'，与 VERSION（$AppVersion）不一致，请重新运行 package.ps1。"
+}
 $out = Join-Path $PSScriptRoot "release\CampusConnect-$AppVersion-setup.exe"
 
-& $makensis "/DAPP_VERSION=$AppVersion" "/DAPP_VERSION4=$version4" "/DSOURCE_DIR=$DeliveryPath" "/DOUT_FILE=$out" $nsi
+& $makensis "/DAPP_VERSION=$AppVersion" "/DAPP_VERSION4=$AppVersion4" "/DSOURCE_DIR=$DeliveryPath" "/DOUT_FILE=$out" $nsi
 if ($LASTEXITCODE -ne 0) { throw 'makensis 编译失败。' }
 if (-not (Test-Path -LiteralPath $out)) { throw '安装包未生成。' }
 Get-Item -LiteralPath $out | Select-Object FullName, Length

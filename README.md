@@ -110,7 +110,9 @@ powershell -ExecutionPolicy Bypass -File .\qa.ps1
 
 ### 版本号
 
-版本号只写在根目录的 [`VERSION`](VERSION) 一个文件里。`version.ps1` 供各脚本引入；`build.ps1` 据此生成 `artifacts/build/Version.g.cs` 供 C# 使用，程序标题、互斥体名、窗口标识、关于对话框都取自它。升级只改 `VERSION` 一处。
+版本号只写在根目录的 [`VERSION`](VERSION) 一个文件里，允许 1–3 段数字（`1`、`1.19`、`1.19.1`），`version.ps1` 会补齐成四段供 .NET 的 `AssemblyVersion` 和 NSIS 的 `VIProductVersion` 使用。`build.ps1` 据此生成 `artifacts/build/Version.g.cs`，程序集版本、程序标题、互斥体名、窗口标识、关于对话框都取自它。
+
+发版的完整顺序是 **改 `VERSION` → `build.ps1` → `package.ps1` → `make-installer.ps1`**（或直接 `repair.ps1`）。`package.ps1` 会读 `dist\CampusConnect.exe` 的实际 `ProductVersion` 与 `VERSION` 比对，不一致就报错，因此不会把旧二进制装进新版本目录；打包前它还会清空交付目录，避免残留文件被带进 zip 和安装包。
 
 ### 脚本编码（容易踩的坑）
 
