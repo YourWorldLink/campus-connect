@@ -30,7 +30,7 @@ namespace CampusConnect
             root.Controls.Add(header, 0, 0);
             var logo = new IconView { Disc = true, Bounds = new Rectangle(15, 14, 52, 52) };
             var title = UiLabel("校园网 · 一键连接", 28, true); title.Bounds = new Rectangle(88, 10, 440, 40);
-            var subtitle = UiLabel("保存一次配置。每次开机后，双击桌面图标即可连接。", 14); subtitle.ForeColor = Muted; subtitle.Bounds = new Rectangle(88, 53, 620, 23);
+            var subtitle = UiLabel("保存配置后，可一键连接或开启开机自动连接。", 14); subtitle.ForeColor = Muted; subtitle.Bounds = new Rectangle(88, 53, 620, 23);
             header.Controls.Add(logo); header.Controls.Add(title); header.Controls.Add(subtitle);
             MouseEventHandler drag = (sender, e) => { if (e.Button == MouseButtons.Left) { ReleaseCapture(); SendMessage(Handle, 0xA1, new IntPtr(2), IntPtr.Zero); } };
             header.MouseDown += drag; title.MouseDown += drag; subtitle.MouseDown += drag;

@@ -142,6 +142,14 @@ namespace CampusConnect
         public static bool Expired(TimeSpan elapsed) { return elapsed > Limit; }
     }
 
+    public static class LaunchPolicy
+    {
+        public static bool ShouldConnect(bool preview, bool autostart, bool autoConnect, bool hasCredentials)
+        {
+            return !preview && hasCredentials && (autostart || autoConnect);
+        }
+    }
+
     // The per-user Run key is the single source of truth: writing it needs no
     // elevation, and the UI reads it back rather than trusting settings.json.
     public static class Startup

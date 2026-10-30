@@ -200,11 +200,11 @@ namespace CampusConnect
                 Close();
                 return;
             }
-            if (!preview && settings.AutoConnect && settings.HasCredentials)
+            if (LaunchPolicy.ShouldConnect(preview, autostart, settings.AutoConnect, settings.HasCredentials))
             {
                 // Launched at logon, the WLAN stack is often still coming up.
                 await Task.Delay(autostart ? 12000 : 700);
-                if (!closing) await ConnectAsync();
+                if (!closing) await ConnectAsync(autostart);
             }
         }
         void SetStatus(string title, string description, bool error)
@@ -319,7 +319,7 @@ namespace CampusConnect
             public PortalRejectedException(string message) : base(message) { }
         }
 
-        async Task ConnectAsync()
+        async Task ConnectAsync(bool retryOnStartup = false)
         {
             if (busy || closing) return;
             try { SaveCurrent(true); }
@@ -336,7 +336,7 @@ namespace CampusConnect
             {
                 // 开机自启时 Wi-Fi 往往还没就绪，一直重试到连通；手动点击只尝试一次，
                 // 这样失败原因能立刻看到，也不会在用户看不到的时候反复联网。
-                if (autostart) await ConnectUntilOnlineAsync(token);
+                if (retryOnStartup) await ConnectUntilOnlineAsync(token);
                 else await ConnectOnceAsync(token);
             }
             catch (OperationCanceledException)

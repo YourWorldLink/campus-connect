@@ -74,6 +74,11 @@ static class CoreTests
             Reject(() => RetryPolicy.DelaySeconds(0), "reject attempt below 1");
             Check(!RetryPolicy.Expired(TimeSpan.FromMinutes(29)), "retry allowed before limit");
             Check(RetryPolicy.Expired(TimeSpan.FromMinutes(31)), "retry stops after limit");
+            Check(LaunchPolicy.ShouldConnect(false, true, false, true), "startup connects even when normal auto-connect is disabled");
+            Check(!LaunchPolicy.ShouldConnect(false, false, false, true), "normal launch respects auto-connect setting");
+            Check(LaunchPolicy.ShouldConnect(false, false, true, true), "normal launch connects when enabled");
+            Check(!LaunchPolicy.ShouldConnect(false, true, true, false), "startup requires credentials");
+            Check(!LaunchPolicy.ShouldConnect(true, true, true, true), "preview never connects");
             Console.WriteLine("RESULT: " + count + " tests passed");
             return 0;
         }
