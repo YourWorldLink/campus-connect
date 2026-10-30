@@ -70,6 +70,20 @@ sealed class BrowserTests : Form
             await Run(settings, false);
             Check(await browser.ExecuteScriptAsync("window.clicks === 1") == "true", "polling never resubmits password");
 
+            settings.Provider = "中国电信";
+            await Page("<select id='provider'><option value='campus'>校园网</option><option value='telecom'>中国电信</option></select>" + form);
+            Check((await Run(settings)).State == "submitted", "matching provider submits");
+            Check(await browser.ExecuteScriptAsync("document.getElementById('provider').value === 'telecom' && window.clicks === 1") == "true", "provider selected before submit");
+            await Page("<select><option>校园网</option></select>" + form);
+            Check((await Run(settings)).State == "manual", "missing provider requires manual action");
+            Check(await browser.ExecuteScriptAsync("window.clicks === 0 && document.getElementById('password').value === ''") == "true", "missing provider never fills or submits credentials");
+            await Page("<select><option>中国电信</option></select><select><option>中国电信</option></select>" + form);
+            Check((await Run(settings)).State == "manual", "ambiguous provider requires manual action");
+            await Page("<label><input type='radio' name='isp' value='telecom'>中国电信</label>" + form);
+            Check((await Run(settings)).State == "submitted", "radio provider selected");
+            Check(await browser.ExecuteScriptAsync("document.querySelector('input[type=radio]').checked && window.clicks === 1") == "true", "radio checked before submission");
+            settings.Provider = "";
+
             await Page(form + "<input placeholder='请输入验证码' name='captcha'>");
             Check((await Run(settings)).State == "manual", "captcha requests user action");
             Check(await browser.ExecuteScriptAsync("window.clicks === 0") == "true", "captcha prevents unattended submission");

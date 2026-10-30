@@ -44,10 +44,38 @@ function (config) {
     if (captcha) return { state: 'manual', message: '认证页需要验证码，请在右侧页面完成登录。' };
     const username = find(config.usernameSelector || '#username,input[name="username"],#user_name,input[name="user_name"],input[autocomplete="username"]') ||
       find('input[type="text"],input[type="tel"],input[type="email"],input:not([type])');
-    if (!username || !password) return { state: 'missing', message: '尚未找到账号密码输入框。可在认证页面操作，或在高级设置中指定输入框。' };
+    if (!username || !password) return { state: 'missing', message: '未找到账号或密码输入框。请检查认证网址，或打开设置中的连接页填写对应的 CSS 选择器。' };
     const button = config.loginSelector ? find(config.loginSelector) :
       controls.find(el => /^(登录|登\s*录|上网|连接|立即登录|认证|Login|Sign in)$/i.test(text(el))) || find('#login,#login-account,button[type="submit"],input[type="submit"]');
-    if (!button) return { state: 'missing', message: '未找到登录按钮。请在认证页面完成登录，或设置登录按钮选择器。' };
+    if (!button) return { state: 'missing', message: '未找到登录按钮。请在认证页面手动登录，或打开设置中的连接页填写登录按钮 CSS 选择器。' };
+    if (config.provider && config.provider.trim()) {
+      const wanted = config.provider.trim().toLowerCase();
+      const candidates = [];
+      for (const doc of documents) {
+        for (const select of doc.querySelectorAll('select')) {
+          if (!visible(select)) continue;
+          for (const option of select.options) {
+            if (!option.disabled && (option.text.trim().toLowerCase() === wanted || option.value.trim().toLowerCase() === wanted))
+              candidates.push({ select, option });
+          }
+        }
+        for (const radio of doc.querySelectorAll('input[type="radio"]')) {
+          if (!visible(radio)) continue;
+          const label = radio.closest('label') || Array.from(doc.querySelectorAll('label')).find(el => el.htmlFor && el.htmlFor === radio.id);
+          if ((label && text(label).toLowerCase() === wanted) || radio.value.trim().toLowerCase() === wanted)
+            candidates.push({ radio });
+        }
+      }
+      if (candidates.length !== 1) return { state: 'manual', message: '未能唯一匹配运营商，请在认证页面选择，或在设置中修改运营商名称。' };
+      const choice = candidates[0];
+      if (choice.radio) { if (!choice.radio.checked) choice.radio.click(); }
+      else if (choice.select.value !== choice.option.value) {
+        choice.select.value = choice.option.value;
+        const win = choice.select.ownerDocument.defaultView;
+        choice.select.dispatchEvent(new win.Event('input', { bubbles: true }));
+        choice.select.dispatchEvent(new win.Event('change', { bubbles: true }));
+      }
+    }
     setValue(username, config.username);
     setValue(password, config.password);
     for (const doc of documents) {

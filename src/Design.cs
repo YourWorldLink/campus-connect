@@ -12,11 +12,16 @@ namespace CampusConnect
 {
     public static class Theme
     {
-        public static readonly Color Green = Color.FromArgb(15, 139, 116);
-        public static readonly Color Ink = Color.FromArgb(30, 43, 65);
-        public static readonly Color Muted = Color.FromArgb(126, 143, 167);
-        public static readonly Color Line = Color.FromArgb(224, 233, 243);
-        public static readonly Color Canvas = Color.FromArgb(244, 248, 251);
+        public static bool Dark;
+        public static Color Green { get { return Dark ? Color.FromArgb(123, 201, 180) : Color.FromArgb(15, 139, 116); } }
+        public static Color Ink { get { return Dark ? Color.FromArgb(231, 235, 234) : Color.FromArgb(30, 43, 65); } }
+        public static Color Muted { get { return Dark ? Color.FromArgb(164, 174, 177) : Color.FromArgb(126, 143, 167); } }
+        public static Color Line { get { return Dark ? Color.FromArgb(68, 76, 79) : Color.FromArgb(224, 233, 243); } }
+        public static Color Canvas { get { return Dark ? Color.FromArgb(22, 25, 28) : Color.FromArgb(244, 248, 251); } }
+        public static Color Surface { get { return Dark ? Color.FromArgb(34, 38, 42) : Color.White; } }
+        public static Color Elevated { get { return Dark ? Color.FromArgb(41, 46, 50) : Color.White; } }
+        public static Color Inset { get { return Dark ? Color.FromArgb(27, 31, 34) : Color.FromArgb(248, 250, 254); } }
+        public static Color Selected { get { return Dark ? Color.FromArgb(42, 66, 61) : Color.FromArgb(229, 247, 243); } }
         public static Font Font(float size = 14, bool bold = false) { return new Font("Microsoft YaHei UI", size, bold ? FontStyle.Bold : FontStyle.Regular, GraphicsUnit.Pixel); }
         public static GraphicsPath Rounded(RectangleF rectangle, float radius)
         {
@@ -92,13 +97,15 @@ namespace CampusConnect
             {
                 if (Primary)
                 {
-                    using (var gradient = new LinearGradientBrush(ClientRectangle, Enabled ? Color.FromArgb(78, 184, 154) : Color.FromArgb(177, 199, 192), Enabled ? Color.FromArgb(5, 120, 105) : Color.FromArgb(142, 164, 158), 28)) e.Graphics.FillPath(gradient, path);
+                    Color start = Theme.Dark ? (Enabled ? Color.FromArgb(50, 128, 109) : Color.FromArgb(77, 89, 86)) : (Enabled ? Color.FromArgb(78, 184, 154) : Color.FromArgb(177, 199, 192));
+                    Color end = Theme.Dark ? (Enabled ? Color.FromArgb(27, 99, 84) : Color.FromArgb(61, 73, 70)) : (Enabled ? Color.FromArgb(5, 120, 105) : Color.FromArgb(142, 164, 158));
+                    using (var gradient = new LinearGradientBrush(ClientRectangle, start, end, 28)) e.Graphics.FillPath(gradient, path);
                 }
                 else
                 {
-                    Color fill = Selected ? Color.FromArgb(229, 247, 243) : hover ? Color.FromArgb(239, 248, 246) : Navigation ? Color.White : Color.FromArgb(253, 254, 255);
+                    Color fill = Theme.Dark ? (Selected ? Theme.Selected : hover ? Color.FromArgb(49, 57, 58) : Theme.Surface) : Selected ? Color.FromArgb(229, 247, 243) : hover ? Color.FromArgb(239, 248, 246) : Navigation ? Color.White : Color.FromArgb(253, 254, 255);
                     using (var brush = new SolidBrush(fill)) e.Graphics.FillPath(brush, path);
-                    if (!Navigation) using (var pen = new Pen(Selected ? Color.FromArgb(202, 237, 230) : Theme.Line)) e.Graphics.DrawPath(pen, path);
+                    if (!Navigation) using (var pen = new Pen(Selected && !Theme.Dark ? Color.FromArgb(202, 237, 230) : Theme.Line)) e.Graphics.DrawPath(pen, path);
                 }
                 if (Enabled && (pressed || (Primary && hover)))
                     using (var shade = new SolidBrush(Color.FromArgb(pressed ? 26 : 12, Color.Black))) e.Graphics.FillPath(shade, path);
@@ -131,7 +138,7 @@ namespace CampusConnect
             e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
             if (Disc)
             {
-                using (var brush = new LinearGradientBrush(ClientRectangle, Color.FromArgb(111, 204, 175), Color.FromArgb(4, 127, 106), 65)) e.Graphics.FillEllipse(brush, 0, 0, Width - 1, Height - 1);
+                using (var brush = new LinearGradientBrush(ClientRectangle, Theme.Dark ? Color.FromArgb(82, 162, 139) : Color.FromArgb(111, 204, 175), Theme.Dark ? Color.FromArgb(29, 105, 89) : Color.FromArgb(4, 127, 106), 65)) e.Graphics.FillEllipse(brush, 0, 0, Width - 1, Height - 1);
                 Icons.Draw(e.Graphics, IconName, new RectangleF(Width * .24F, Height * .24F, Width * .52F, Height * .52F), Color.White);
             }
             else Icons.Draw(e.Graphics, IconName, new RectangleF(0, 0, Width, Height), IconColor);
@@ -168,7 +175,7 @@ namespace CampusConnect
             {
                 Color fill = closing
                     ? (pressed ? Color.FromArgb(196, 20, 34) : Color.FromArgb(226, 34, 51))
-                    : (pressed ? Color.FromArgb(222, 231, 238) : Color.FromArgb(237, 243, 248));
+                    : Theme.Dark ? (pressed ? Color.FromArgb(65, 82, 80) : Color.FromArgb(51, 66, 64)) : (pressed ? Color.FromArgb(222, 231, 238) : Color.FromArgb(237, 243, 248));
                 using (var path = Theme.Rounded(new RectangleF(2.5F, 2.5F, Width - 5F, Height - 5F), 6F))
                 using (var brush = new SolidBrush(fill)) graphics.FillPath(brush, path);
                 if (closing) color = Color.White;
@@ -222,18 +229,18 @@ namespace CampusConnect
                 wave.AddBezier(x - 145, Height, x - 30, Height - 175, x + 10, Height + 30, x + 100, Height - 118);
                 wave.AddBezier(x + 100, Height - 118, x + 160, Height - 220, x + 180, Height + 5, x + 275, 30);
                 wave.AddLine(x + 275, 30, Width, Height); wave.CloseFigure();
-                using (var brush = new SolidBrush(Color.FromArgb(30, 103, 195, 170))) g.FillPath(brush, wave);
+                using (var brush = new SolidBrush(Theme.Dark ? Color.FromArgb(35, 75, 140, 120) : Color.FromArgb(30, 103, 195, 170))) g.FillPath(brush, wave);
             }
-            using (var haze = new SolidBrush(Color.FromArgb(55, 204, 239, 229))) g.FillEllipse(haze, x - 40, Height - 44, 290, 70);
+            using (var haze = new SolidBrush(Theme.Dark ? Color.FromArgb(28, 100, 150, 136) : Color.FromArgb(55, 204, 239, 229))) g.FillEllipse(haze, x - 40, Height - 44, 290, 70);
             if (ShowLaptop && Width > 650)
             {
                 using (var screen = new GraphicsPath())
                 {
                     screen.AddPolygon(new PointF[] { new PointF(x + 30, 65), new PointF(x + 184, 65), new PointF(x + 171, Height - 31), new PointF(x + 16, Height - 31) });
-                    using (var brush = new SolidBrush(Color.FromArgb(250, 254, 253))) g.FillPath(brush, screen);
-                    using (var pen = new Pen(Color.FromArgb(102, 165, 155), 5)) { pen.LineJoin = LineJoin.Round; g.DrawPath(pen, screen); }
+                    using (var brush = new SolidBrush(Theme.Dark ? Color.FromArgb(42, 53, 54) : Color.FromArgb(250, 254, 253))) g.FillPath(brush, screen);
+                    using (var pen = new Pen(Theme.Dark ? Color.FromArgb(89, 132, 124) : Color.FromArgb(102, 165, 155), 5)) { pen.LineJoin = LineJoin.Round; g.DrawPath(pen, screen); }
                 }
-                using (var pen = new Pen(Color.FromArgb(150, 211, 198), 8)) { pen.StartCap = pen.EndCap = LineCap.Round; g.DrawLine(pen, x - 5, Height - 21, x + 187, Height - 21); }
+                using (var pen = new Pen(Theme.Dark ? Color.FromArgb(83, 128, 117) : Color.FromArgb(150, 211, 198), 8)) { pen.StartCap = pen.EndCap = LineCap.Round; g.DrawLine(pen, x - 5, Height - 21, x + 187, Height - 21); }
                 Icons.Draw(g, "wifi", new RectangleF(x + 75, 93, 46, 46), Color.FromArgb(86, 183, 157));
                 using (var leaf = new SolidBrush(Color.FromArgb(132, 207, 187)))
                 {
@@ -242,7 +249,7 @@ namespace CampusConnect
                     g.FillEllipse(leaf, x + 198, Height - 80, 26, 14);
                 }
                 using (var pen = new Pen(Color.FromArgb(146, 204, 189), 3)) g.DrawLine(pen, x + 223, Height - 95, x + 220, Height - 30);
-                using (var pot = new SolidBrush(Color.FromArgb(245, 252, 249))) g.FillPolygon(pot, new Point[] { new Point(x + 204, Height - 39), new Point(x + 239, Height - 39), new Point(x + 234, Height), new Point(x + 209, Height) });
+                using (var pot = new SolidBrush(Theme.Dark ? Color.FromArgb(73, 91, 85) : Color.FromArgb(245, 252, 249))) g.FillPolygon(pot, new Point[] { new Point(x + 204, Height - 39), new Point(x + 239, Height - 39), new Point(x + 234, Height), new Point(x + 209, Height) });
             }
             g.Restore(state);
         }
@@ -270,7 +277,7 @@ namespace CampusConnect
                 using (var pen = new Pen(Theme.Line, 1)) g.DrawLine(pen, 14, y, 14, y + height);
                 using (var brush = new SolidBrush(Theme.Green)) g.FillEllipse(brush, 11, y + 9, 6, 6);
                 TextRenderer.DrawText(g, entry.Item1, font, new Rectangle(30, y + 2, 67, height), Theme.Muted);
-                TextRenderer.DrawText(g, entry.Item2, font, new Rectangle(104, y + 2, width, height), Color.FromArgb(103, 121, 148), TextFormatFlags.WordBreak);
+                TextRenderer.DrawText(g, entry.Item2, font, new Rectangle(104, y + 2, width, height), Theme.Dark ? Theme.Ink : Color.FromArgb(103, 121, 148), TextFormatFlags.WordBreak);
                 y += height;
             }
             AutoScrollMinSize = new Size(0, y - AutoScrollPosition.Y + 8);
@@ -291,12 +298,12 @@ namespace CampusConnect
             header.Paint += (sender, e) => { using(var pen = new Pen(Theme.Line)) e.Graphics.DrawLine(pen, 0, header.Height - 1, header.Width, header.Height - 1); };
             Controls.Add(content); Controls.Add(header);
         }
-        public void AddPage(Panel page)
+        public void AddPage(Panel page, string iconName = null)
         {
             int index = pages.Count;
             page.Dock = DockStyle.Fill; page.Visible = false;
             pages.Add(page); content.Controls.Add(page);
-            var button = new DeckTab { Text = page.Text, IconName = index == 0 ? "clock" : "globe", Bounds = new Rectangle(index * 132, 0, 128, 43) };
+            var button = new DeckTab { Text = page.Text, IconName = iconName ?? (index == 0 ? "clock" : "globe"), Bounds = new Rectangle(index * 132, 0, 128, 43) };
             button.Click += (sender, e) => SelectedIndex = index;
             header.Controls.Add(button); buttons.Add(button);
             SelectedIndex = selected;
@@ -320,7 +327,7 @@ namespace CampusConnect
             public DeckTab() { FlatStyle=FlatStyle.Flat;FlatAppearance.BorderSize=0;SetStyle(ControlStyles.UserPaint|ControlStyles.OptimizedDoubleBuffer|ControlStyles.AllPaintingInWmPaint,true);Cursor=Cursors.Hand;AccessibleRole=AccessibleRole.PageTab; }
             protected override void OnPaint(PaintEventArgs e)
             {
-                e.Graphics.Clear(Color.White); e.Graphics.SmoothingMode=SmoothingMode.AntiAlias;
+                e.Graphics.Clear(Theme.Surface); e.Graphics.SmoothingMode=SmoothingMode.AntiAlias;
                 Icons.Draw(e.Graphics,IconName,new RectangleF(9,11,21,21),Active?Theme.Green:Theme.Muted);
                 TextRenderer.DrawText(e.Graphics,Text,Theme.Font(15,Active),new Rectangle(39,0,89,41),Active?Theme.Ink:Theme.Muted,TextFormatFlags.VerticalCenter);
                 if(Active) using(var pen=new Pen(Theme.Green,3)) {pen.StartCap=pen.EndCap=LineCap.Round;e.Graphics.DrawLine(pen,40,40,99,40);}

@@ -76,6 +76,7 @@ namespace CampusConnect
             bool preview = false;
             bool compact = false;
             bool maximized = false;
+            bool darkPreview = false;
             bool autostart = false;
             foreach (var arg in args)
             {
@@ -84,13 +85,14 @@ namespace CampusConnect
                 if (arg == "--preview" || arg == "--settings") preview = true;
                 if (arg == "--compact") compact = true;
                 if (arg == "--maximized") maximized = true;
+                if (arg == "--dark-preview") darkPreview = true;
                 if (arg == "--autostart") autostart = true;
                 if (arg.StartsWith("--screenshot=")) { screenshot = arg.Substring(13); preview = true; }
             }
             if (!String.IsNullOrEmpty(screenshot))
             {
                 // Visual QA must be independent from a user's running instance.
-                var capture = new MainForm(true, screenshot);
+                var capture = new MainForm(true, screenshot, false, darkPreview ? (bool?)true : null);
                 if (compact) capture.Size = new Size(1060, 740);
                 if (maximized) capture.WindowState = FormWindowState.Maximized;
                 Application.Run(capture);

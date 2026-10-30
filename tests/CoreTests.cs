@@ -23,6 +23,9 @@ static class CoreTests
     {
         try
         {
+            var screenshotExample = Settings.CreateScreenshotExample();
+            Check(screenshotExample.Ssid == "校园 Wi-Fi" && screenshotExample.PortalUrl == "https://example.com" &&
+                screenshotExample.Username == "校园网账号" && screenshotExample.Password == "示例密码", "screenshots use fixed example credentials");
             Check(Validation.Portal("http://192.0.2.10/srun_portal_pc?ac_id=1&theme=pro").Host == "192.0.2.10", "SRun URL preserved");
             Reject(() => Validation.Portal("javascript:alert(1)"), "reject script URL");
             Reject(() => Validation.Portal("file:///C:/secret"), "reject local-file URL");
@@ -79,6 +82,23 @@ static class CoreTests
             Check(LaunchPolicy.ShouldConnect(false, false, true, true), "normal launch connects when enabled");
             Check(!LaunchPolicy.ShouldConnect(false, true, true, false), "startup requires credentials");
             Check(!LaunchPolicy.ShouldConnect(true, true, true, true), "preview never connects");
+            Check(!MonitorPolicy.ShouldReconnect(true, true, NetworkScope.Campus, 1), "one failed probe does not reconnect");
+            Check(MonitorPolicy.ShouldReconnect(true, true, NetworkScope.Campus, 2), "two failed probes trigger reconnect on target network");
+            Check(MonitorPolicy.ShouldReconnect(true, true, NetworkScope.Disconnected, 2), "fully disconnected campus network can reconnect");
+            Check(!MonitorPolicy.ShouldReconnect(true, true, NetworkScope.Other, 2), "other network prevents background reconnect");
+            Check(!MonitorPolicy.ShouldReconnect(true, true, NetworkScope.Unknown, 2), "unknown network state prevents background reconnect");
+            Check(!MonitorPolicy.ShouldReconnect(false, true, NetworkScope.Campus, 2), "disabled monitoring never reconnects");
+            Check(!MonitorPolicy.ShouldReconnect(true, false, NetworkScope.Campus, 2), "paused monitoring never reconnects");
+            var availableNetworkType = typeof(Wifi).GetNestedType("AvailableNetwork", System.Reflection.BindingFlags.NonPublic);
+            Check(System.Runtime.InteropServices.Marshal.SizeOf(availableNetworkType) == 628, "Windows Wi-Fi network structure layout");
+            string logPath = Path.Combine("artifacts", "test-log-" + Guid.NewGuid().ToString("N") + ".txt");
+            Check(LogStore.Read(logPath) == "", "missing log is empty");
+            LogStore.Append("first\nsecond", logPath);
+            Check(LogStore.Read(logPath).Contains("first second"), "log flattens line breaks");
+            LogStore.Clear(logPath);
+            Check(LogStore.Read(logPath) == "", "log can be cleared");
+            var oldSettings = Json.Read<Settings>("{\"Version\":1}");
+            Check(oldSettings.Appearance != "dark", "old settings default to light appearance");
             Console.WriteLine("RESULT: " + count + " tests passed");
             return 0;
         }

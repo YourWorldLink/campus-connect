@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
+using System.Net.NetworkInformation;
+using System.Net.Sockets;
 using System.Runtime.InteropServices;
 using System.Runtime.Serialization;
 using System.Runtime.Serialization.Json;
@@ -30,8 +32,40 @@ namespace CampusConnect
         [DataMember] public string UsernameSelector = "";
         [DataMember] public string PasswordSelector = "";
         [DataMember] public string LoginSelector = "";
+        [DataMember] public string Appearance = "light";
+        [DataMember] public bool MonitorConnection;
+        [DataMember] public string Provider = "";
         public string Password { get; set; }
         public bool HasCredentials { get { return !String.IsNullOrWhiteSpace(Username) && !String.IsNullOrEmpty(Password); } }
+        public static Settings CreateScreenshotExample()
+        {
+            return new Settings { Ssid = "校园 Wi-Fi", PortalUrl = "https://example.com",
+                Username = "校园网账号", Password = "示例密码", AutoConnect = true };
+        }
+    }
+
+    public static class LogStore
+    {
+        public static readonly string FilePath = Path.Combine(SettingsStore.DirectoryPath, "activity.log");
+        const long MaxBytes = 512 * 1024;
+        public static void Append(string message, string path = null)
+        {
+            path = path ?? FilePath;
+            Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path)));
+            if (File.Exists(path) && new FileInfo(path).Length > MaxBytes)
+                File.WriteAllText(path, "", new UTF8Encoding(false));
+            File.AppendAllText(path, DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "  " + message.Replace('\r', ' ').Replace('\n', ' ') + Environment.NewLine, new UTF8Encoding(false));
+        }
+        public static string Read(string path = null)
+        {
+            path = path ?? FilePath;
+            return File.Exists(path) ? File.ReadAllText(path, Encoding.UTF8) : "";
+        }
+        public static void Clear(string path = null)
+        {
+            path = path ?? FilePath;
+            if (File.Exists(path)) File.Delete(path);
+        }
     }
 
     public static class Json
@@ -150,6 +184,47 @@ namespace CampusConnect
         }
     }
 
+    public static class MonitorPolicy
+    {
+        public static bool ShouldReconnect(bool enabled, bool armed, NetworkScope scope, int consecutiveFailures)
+        {
+            return enabled && armed && (scope == NetworkScope.Campus || scope == NetworkScope.Disconnected) && consecutiveFailures >= 2;
+        }
+    }
+
+    public enum NetworkScope { Campus, Disconnected, Other, Unknown }
+
+    public static class NetworkContext
+    {
+        public static NetworkScope GetScope(string target)
+        {
+            try
+            {
+                List<string> ssids;
+                if (String.IsNullOrWhiteSpace(target) || !Wifi.TryConnectedSsids(out ssids)) return NetworkScope.Unknown;
+                if (ssids.Exists(s => !String.Equals(s, target, StringComparison.Ordinal))) return NetworkScope.Other;
+                foreach (var adapter in NetworkInterface.GetAllNetworkInterfaces())
+                {
+                    if (adapter.OperationalStatus != OperationalStatus.Up || adapter.NetworkInterfaceType == NetworkInterfaceType.Loopback) continue;
+                    if (adapter.NetworkInterfaceType == NetworkInterfaceType.Wireless80211)
+                    {
+                        if (ssids.Count == 0) return NetworkScope.Unknown;
+                        continue;
+                    }
+                    foreach (var address in adapter.GetIPProperties().UnicastAddresses)
+                    {
+                        var ip = address.Address;
+                        if (System.Net.IPAddress.IsLoopback(ip)) continue;
+                        if (ip.AddressFamily == AddressFamily.InterNetwork && !ip.ToString().StartsWith("169.254.")) return NetworkScope.Other;
+                        if (ip.AddressFamily == AddressFamily.InterNetworkV6 && !ip.IsIPv6LinkLocal && !ip.IsIPv6Multicast) return NetworkScope.Other;
+                    }
+                }
+                return ssids.Contains(target) ? NetworkScope.Campus : NetworkScope.Disconnected;
+            }
+            catch (Exception) { return NetworkScope.Unknown; }
+        }
+    }
+
     // The per-user Run key is the single source of truth: writing it needs no
     // elevation, and the UI reads it back rather than trusting settings.json.
     public static class Startup
@@ -193,18 +268,92 @@ namespace CampusConnect
         [DllImport("wlanapi.dll")] static extern uint WlanOpenHandle(uint version, IntPtr reserved, out uint negotiated, out IntPtr client);
         [DllImport("wlanapi.dll")] static extern uint WlanEnumInterfaces(IntPtr client, IntPtr reserved, out IntPtr list);
         [DllImport("wlanapi.dll")] static extern uint WlanQueryInterface(IntPtr client, ref Guid id, int opcode, IntPtr reserved, out uint size, out IntPtr data, out int type);
+        [DllImport("wlanapi.dll")] static extern uint WlanScan(IntPtr client, ref Guid id, IntPtr ssid, IntPtr ieData, IntPtr reserved);
+        [DllImport("wlanapi.dll")] static extern uint WlanGetAvailableNetworkList(IntPtr client, ref Guid id, uint flags, IntPtr reserved, out IntPtr list);
         [DllImport("wlanapi.dll")] static extern void WlanFreeMemory(IntPtr data);
         [DllImport("wlanapi.dll")] static extern uint WlanCloseHandle(IntPtr client, IntPtr reserved);
+        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+        struct AvailableNetwork
+        {
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 256)] public string Profile;
+            public uint SsidLength;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 32)] public byte[] Ssid;
+            public uint BssType, BssidCount, Connectable, Reason, PhyCount;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 8)] public uint[] PhyTypes;
+            public uint MorePhy, Signal, Security, Authentication, Cipher, Flags, Reserved;
+        }
+        public sealed class NearbyNetwork
+        {
+            public string Ssid, Profile;
+            public uint Signal;
+            public bool Connected, Secured;
+        }
+        public static List<NearbyNetwork> ScanNearby()
+        {
+            uint version; IntPtr client;
+            uint error = WlanOpenHandle(2, IntPtr.Zero, out version, out client);
+            if (error != 0) throw new InvalidOperationException("无法访问无线网络服务（错误 " + error + "）。请检查 Wi-Fi 和 WLAN 自动配置服务。");
+            IntPtr interfaces = IntPtr.Zero;
+            try
+            {
+                error = WlanEnumInterfaces(client, IntPtr.Zero, out interfaces);
+                if (error != 0) throw new InvalidOperationException("无法读取无线网卡（错误 " + error + "）。");
+                int count = Marshal.ReadInt32(interfaces);
+                if (count == 0) throw new InvalidOperationException("没有找到无线网卡，请检查 Wi-Fi 是否已开启。");
+                var ids = new List<Guid>();
+                for (int i = 0; i < count; i++)
+                {
+                    var id = (Guid)Marshal.PtrToStructure(IntPtr.Add(interfaces, 8 + i * 532), typeof(Guid));
+                    error = WlanScan(client, ref id, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero);
+                    if (error == 5) throw new InvalidOperationException("Windows 拒绝了 Wi-Fi 扫描。请检查位置服务及桌面应用的位置权限。");
+                    if (error != 0) throw new InvalidOperationException("无法扫描附近网络（错误 " + error + "）。请检查 Wi-Fi 是否开启。");
+                    ids.Add(id);
+                }
+                Thread.Sleep(4000);
+                var found = new Dictionary<string, NearbyNetwork>(StringComparer.Ordinal);
+                foreach (var interfaceId in ids)
+                {
+                    var id = interfaceId; IntPtr list = IntPtr.Zero;
+                    error = WlanGetAvailableNetworkList(client, ref id, 0, IntPtr.Zero, out list);
+                    if (error != 0) throw new InvalidOperationException(error == 5 ? "Windows 拒绝读取 Wi-Fi 列表。请检查位置服务及桌面应用的位置权限。" : "无法读取附近网络（错误 " + error + "）。");
+                    try
+                    {
+                        int entries = Marshal.ReadInt32(list);
+                        int size = Marshal.SizeOf(typeof(AvailableNetwork));
+                        for (int i = 0; i < entries; i++)
+                        {
+                            var item = (AvailableNetwork)Marshal.PtrToStructure(IntPtr.Add(list, 8 + i * size), typeof(AvailableNetwork));
+                            if (item.SsidLength == 0 || item.SsidLength > 32) continue;
+                            string name = Encoding.UTF8.GetString(item.Ssid, 0, (int)item.SsidLength);
+                            var candidate = new NearbyNetwork { Ssid = name, Profile = item.Profile, Signal = item.Signal, Connected = (item.Flags & 1) != 0, Secured = item.Security != 0 };
+                            NearbyNetwork previous;
+                            if (!found.TryGetValue(name, out previous) || (candidate.Connected && !previous.Connected) || (!candidate.Connected && !previous.Connected && !String.IsNullOrEmpty(candidate.Profile) && String.IsNullOrEmpty(previous.Profile)) || (candidate.Connected == previous.Connected && String.IsNullOrEmpty(candidate.Profile) == String.IsNullOrEmpty(previous.Profile) && candidate.Signal > previous.Signal)) found[name] = candidate;
+                        }
+                    }
+                    finally { if (list != IntPtr.Zero) WlanFreeMemory(list); }
+                }
+                var result = new List<NearbyNetwork>(found.Values);
+                result.Sort((a, b) => { int connected = b.Connected.CompareTo(a.Connected); return connected != 0 ? connected : b.Signal.CompareTo(a.Signal); });
+                return result;
+            }
+            finally { if (interfaces != IntPtr.Zero) WlanFreeMemory(interfaces); WlanCloseHandle(client, IntPtr.Zero); }
+        }
         public static List<string> ConnectedSsids()
         {
-            var result = new List<string>();
+            List<string> result;
+            TryConnectedSsids(out result);
+            return result;
+        }
+        public static bool TryConnectedSsids(out List<string> result)
+        {
+            result = new List<string>();
             uint version;
             IntPtr client;
-            if (WlanOpenHandle(2, IntPtr.Zero, out version, out client) != 0) return result;
+            if (WlanOpenHandle(2, IntPtr.Zero, out version, out client) != 0) return false;
             IntPtr list = IntPtr.Zero;
             try
             {
-                if (WlanEnumInterfaces(client, IntPtr.Zero, out list) != 0) return result;
+                if (WlanEnumInterfaces(client, IntPtr.Zero, out list) != 0) return false;
                 int count = Marshal.ReadInt32(list);
                 for (int i = 0; i < count; i++)
                 {
@@ -212,12 +361,12 @@ namespace CampusConnect
                     if (Marshal.ReadInt32(item, 528) != 1) continue;
                     Guid id = (Guid)Marshal.PtrToStructure(item, typeof(Guid));
                     uint size; int type; IntPtr data;
-                    if (WlanQueryInterface(client, ref id, 7, IntPtr.Zero, out size, out data, out type) != 0) continue;
+                    if (WlanQueryInterface(client, ref id, 7, IntPtr.Zero, out size, out data, out type) != 0) return false;
                     try
                     {
-                        if (size < 556) continue;
+                        if (size < 556) return false;
                         int length = Marshal.ReadInt32(data, 520);
-                        if (length < 1 || length > 32) continue;
+                        if (length < 1 || length > 32) return false;
                         var bytes = new byte[length];
                         Marshal.Copy(IntPtr.Add(data, 524), bytes, 0, length);
                         result.Add(Encoding.UTF8.GetString(bytes));
@@ -230,7 +379,7 @@ namespace CampusConnect
                 if (list != IntPtr.Zero) WlanFreeMemory(list);
                 WlanCloseHandle(client, IntPtr.Zero);
             }
-            return result;
+            return true;
         }
         // 「忘记网络」会删掉 Windows 里保存的配置（连同 Wi-Fi 密码）。netsh 无法凭空
         // 建立连接，重试也不会成功，必须由用户在系统里重新保存这个网络。
@@ -261,13 +410,14 @@ namespace CampusConnect
             }
             catch (Exception) { return true; }
         }
-        public static async Task ConnectAsync(string ssid, string profile, CancellationToken token)
+        public static async Task ConnectAsync(string ssid, string profile, CancellationToken token, Func<bool> mayConnect = null)
         {
             if (String.IsNullOrWhiteSpace(ssid)) return;
             if (ConnectedSsids().Contains(ssid)) return;
             string name = String.IsNullOrWhiteSpace(profile) ? ssid : profile;
             if (!ProfileExists(name))
                 throw new WifiProfileMissingException("Windows 里没有保存名为“" + name + "”的 Wi-Fi。忘记网络、或从未连接过这个 Wi-Fi 时会出现这种情况：请先在系统设置里手动连接一次（需要输入 Wi-Fi 密码），之后本工具才能自动连接。");
+            if (mayConnect != null && !mayConnect()) throw new NetworkChangedException();
             var start = new ProcessStartInfo("netsh.exe", "wlan connect name=" + Validation.QuoteArgument(name) + " ssid=" + Validation.QuoteArgument(ssid));
             start.UseShellExecute = false;
             start.CreateNoWindow = true;
@@ -275,6 +425,11 @@ namespace CampusConnect
             {
                 for (int i = 0; !process.HasExited; i++)
                 {
+                    if (mayConnect != null && !mayConnect())
+                    {
+                        try { process.Kill(); } catch (InvalidOperationException) { }
+                        throw new NetworkChangedException();
+                    }
                     if (token.IsCancellationRequested || i >= 40)
                     {
                         try { process.Kill(); } catch (InvalidOperationException) { }
@@ -290,12 +445,15 @@ namespace CampusConnect
             for (int i = 0; i < 20; i++)
             {
                 token.ThrowIfCancellationRequested();
+                if (mayConnect != null && !mayConnect()) throw new NetworkChangedException();
                 if (ConnectedSsids().Contains(ssid)) return;
                 await Task.Delay(1000, token);
             }
             throw new TimeoutException("未连接到指定 SSID。请检查 Wi-Fi 是否在范围内、系统是否已保存它，以及 Wi-Fi 配置名称是否正确。");
         }
     }
+
+    public sealed class NetworkChangedException : Exception { }
 
     public static class Internet
     {
@@ -352,6 +510,7 @@ namespace CampusConnect
         [DataMember(Name="usernameSelector")] public string UsernameSelector;
         [DataMember(Name="passwordSelector")] public string PasswordSelector;
         [DataMember(Name="loginSelector")] public string LoginSelector;
+        [DataMember(Name="provider")] public string Provider;
         [DataMember(Name="submit")] public bool Submit;
     }
     [DataContract]
@@ -369,7 +528,7 @@ namespace CampusConnect
             using (var reader = new StreamReader(stream)) script = reader.ReadToEnd();
             var data = new PortalInput { Origin = Validation.Portal(settings.PortalUrl).GetLeftPart(UriPartial.Authority), Username = settings.Username, Password = settings.Password,
                 UsernameSelector = settings.UsernameSelector, PasswordSelector = settings.PasswordSelector,
-                LoginSelector = settings.LoginSelector, Submit = submit };
+                LoginSelector = settings.LoginSelector, Provider = settings.Provider ?? "", Submit = submit };
             return "(" + script + ")(" + Json.Write(data) + ")";
         }
     }

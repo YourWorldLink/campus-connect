@@ -73,4 +73,14 @@ if ($LASTEXITCODE -ne 0) { throw 'Activation tests compile failed.' }
 Copy-Item -LiteralPath '使用说明.txt' -Destination 'dist'
 Copy-Item -LiteralPath 'ICON-SOURCES.md' -Destination 'dist'
 Copy-Item -LiteralPath 'THIRD-PARTY-NOTICES.md' -Destination 'dist'
+$screenshot = Join-Path $PSScriptRoot ("artifacts\readme-" + [Guid]::NewGuid().ToString('N') + '.png')
+try {
+    $capture = Start-Process -FilePath (Join-Path $PSScriptRoot 'dist\CampusConnect.exe') -ArgumentList @('--maximized', ('--screenshot="' + $screenshot + '"')) -PassThru -WindowStyle Hidden
+    if (-not $capture.WaitForExit(20000)) { Stop-Process -Id $capture.Id; throw 'README screenshot timed out.' }
+    if ($capture.ExitCode -ne 0 -or -not (Test-Path -LiteralPath $screenshot)) { throw 'README screenshot generation failed.' }
+    New-Item -ItemType Directory -Path 'docs' -Force | Out-Null
+    Copy-Item -LiteralPath $screenshot -Destination 'docs\screenshot.png' -Force
+} finally {
+    if (Test-Path -LiteralPath $screenshot) { Remove-Item -LiteralPath $screenshot -Force }
+}
 Write-Output "Build and core tests complete (version $AppVersion). Run verify-ui.ps1 for browser integration and visual QA."

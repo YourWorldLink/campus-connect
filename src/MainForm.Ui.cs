@@ -9,7 +9,8 @@ namespace CampusConnect
     {
         readonly Label connectionValue = new Label(), accountValue = new Label(), networkValue = new Label(), recentValue = new Label(), badgeLabel = new Label();
         readonly ActionButton navConnect = new ActionButton(), navSettings = new ActionButton(), navAbout = new ActionButton();
-        readonly WindowButton minimizeButton = new WindowButton { Kind = WindowButton.Glyph.Minimize, AccessibleName = "最小化" };
+        readonly WindowButton minimizeButton = new WindowButton { Kind = WindowButton.Glyph.Minimize, AccessibleName = "最小化到系统托盘" };
+        readonly WindowButton maximizeButton = new WindowButton { Kind = WindowButton.Glyph.Maximize, AccessibleName = "最大化" };
         readonly WindowButton closeButton = new WindowButton { Kind = WindowButton.Glyph.Close, AccessibleName = "关闭" };
         readonly IconView revealPassword = new IconView { IconName = "eye", IconColor = Muted, Width = 24, Height = 24, Cursor = Cursors.Hand, AccessibleName = "显示或隐藏密码", TabStop = false };
         bool passwordShown;
@@ -35,16 +36,23 @@ namespace CampusConnect
             MouseEventHandler drag = (sender, e) => { if (e.Button == MouseButtons.Left) { ReleaseCapture(); SendMessage(Handle, 0xA1, new IntPtr(2), IntPtr.Zero); } };
             header.MouseDown += drag; title.MouseDown += drag; subtitle.MouseDown += drag;
             header.DoubleClick += (sender, e) => ToggleMaximize();
-            // 最小化与关闭。放在 header 内且 y 非负：子控件超出父控件会被裁剪。
-            var windowButtons = new FlowLayoutPanel { FlowDirection = FlowDirection.LeftToRight, WrapContents = false, Size = new Size(92, 34), Location = new Point(header.Width - 92, 2) };
-            header.Resize += (sender, e) => windowButtons.Left = header.Width - 92;
-            foreach (var button in new[] { minimizeButton, closeButton })
+            var windowButtons = new FlowLayoutPanel { FlowDirection = FlowDirection.LeftToRight, WrapContents = false, Size = new Size(138, 34), Location = new Point(header.Width - 138, 2) };
+            header.Resize += (sender, e) => windowButtons.Left = header.Width - 138;
+            foreach (var button in new[] { minimizeButton, maximizeButton, closeButton })
             {
                 button.Size = new Size(46, 34);
                 button.Margin = Padding.Empty;
                 windowButtons.Controls.Add(button);
             }
-            minimizeButton.Click += (sender, e) => WindowState = FormWindowState.Minimized;
+            minimizeButton.Click += (sender, e) => MinimizeToTray();
+            maximizeButton.Click += (sender, e) => ToggleMaximize();
+            var windowTips = new ToolTip();
+            windowTips.SetToolTip(minimizeButton, "最小化到系统托盘");
+            windowTips.SetToolTip(closeButton, "关闭");
+            Action syncMaximize = () => { bool maximized = WindowState == FormWindowState.Maximized; maximizeButton.Kind = maximized ? WindowButton.Glyph.Restore : WindowButton.Glyph.Maximize; maximizeButton.AccessibleName = maximized ? "还原" : "最大化"; windowTips.SetToolTip(maximizeButton, maximizeButton.AccessibleName); maximizeButton.Invalidate(); };
+            Resize += (sender, e) => syncMaximize();
+            FormClosed += (sender, e) => windowTips.Dispose();
+            syncMaximize();
             closeButton.Click += (sender, e) => Close();
             header.Controls.Add(windowButtons);
             var badge = new Card { Fill = Color.FromArgb(230, 248, 244), Border = Color.FromArgb(205, 237, 231), Radius = 16, Size = new Size(92, 30), Anchor = AnchorStyles.Right | AnchorStyles.Top };
@@ -68,8 +76,8 @@ namespace CampusConnect
             rail.Controls.Add(railLayout); railLayout.Controls.Add(navigation, 0, 0);
             Navigation(navConnect, "连接", "wifi", true); Navigation(navSettings, "设置", "settings", false); Navigation(navAbout, "关于", "info", false);
             navigation.Controls.Add(navConnect); navigation.Controls.Add(navSettings); navigation.Controls.Add(navAbout);
-            navConnect.Click += (sender, e) => { tabs.SelectedIndex = 0; SelectNav(navConnect); ssid.Focus(); };
-            navSettings.Click += (sender, e) => { if (!busy) { SelectNav(navSettings); ShowAdvanced(); SelectNav(navConnect); } };
+            navConnect.Click += (sender, e) => { tabs.SelectedTab = logTab; SelectNav(navConnect); ssid.Focus(); };
+            navSettings.Click += (sender, e) => { if (!busy) { settingsOpen = true; try { SelectNav(navSettings); ShowAdvanced(); } finally { settingsOpen = false; SelectNav(navConnect); } } };
             navAbout.Click += (sender, e) => { SelectNav(navAbout); ShowAbout(); SelectNav(navConnect); };
             var shortcut = new ActionButton { AccessibleName = "创建桌面快捷方式" };
             Navigation(shortcut, "桌面图标", "link", false);
@@ -95,7 +103,10 @@ namespace CampusConnect
             ConfigField(form, "Wi-Fi 名称（SSID）", ssid);
             var current = new ActionButton { Text = "使用当前 Wi-Fi", Pill = true, Selected = true, Width = 145, Height = 31, Font = Theme.Font(14), Anchor = AnchorStyles.Left, Margin = new Padding(0, 5, 0, 0) };
             current.Click += (sender, e) => { var networks = Wifi.ConnectedSsids(); if (networks.Count > 0) ssid.Text = networks[0]; else MessageBox.Show(this, "当前未连接 Wi-Fi，请先在 Windows 中连接并保存校园 Wi-Fi。", Text); };
-            AddRow(form, current, 40);
+            var search = new ActionButton { Text = "搜索附近", IconName = "wifi", Pill = true, Width = 122, Height = 31, Font = Theme.Font(14), Margin = new Padding(8, 5, 0, 0) };
+            search.Click += async (sender, e) => { if (tabs.SelectedTab == nearbyTab) await ScanNearbyAsync(); else tabs.SelectedTab = nearbyTab; };
+            var networkActions = new FlowLayoutPanel { Dock = DockStyle.Fill, WrapContents = false, Margin = Padding.Empty };
+            networkActions.Controls.Add(current); networkActions.Controls.Add(search); AddRow(form, networkActions, 40);
             ConfigField(form, "校园网认证网址", url); AddRow(form, new Panel(), 11);
             ConfigField(form, "校园网账号", username); AddRow(form, new Panel(), 11);
             ConfigField(form, "校园网密码", password, revealPassword);
@@ -145,10 +156,13 @@ namespace CampusConnect
 
             var history = new Card { Dock = DockStyle.Fill, Margin = new Padding(0, 15, 0, 0), Padding = new Padding(10, 8, 10, 8) };
             tabs.Dock = DockStyle.Fill;
-            var logTab = new Panel { Text = "运行记录", BackColor = Color.White }; log.Dock = DockStyle.Fill; logTab.Controls.Add(log);
+            log.Dock = DockStyle.Fill; logTab.Controls.Add(log);
             browserTab.BackColor = Color.White;
             var placeholder = UiLabel("连接时将自动加载学校认证页面。\n\n如需验证码或选择运营商，可在此完成。", 14); placeholder.ForeColor = Muted; placeholder.Dock = DockStyle.Fill; placeholder.Padding = new Padding(22); browserTab.Controls.Add(placeholder);
-            tabs.AddPage(logTab); tabs.AddPage(browserTab); history.Controls.Add(tabs); content.Controls.Add(history, 0, 2);
+            BuildNearbyPage();
+            tabs.AddPage(nearbyTab, "wifi"); tabs.AddPage(logTab, "clock"); tabs.AddPage(browserTab, "globe"); tabs.SelectedTab = logTab;
+            nearbyTab.VisibleChanged += async (sender, e) => { if (nearbyTab.Visible && !nearbyLoaded) await ScanNearbyAsync(); };
+            history.Controls.Add(tabs); content.Controls.Add(history, 0, 2);
 
             save.Click += (sender, e) => { try { SaveCurrent(false); SetStatus("已配置完成", auto.Checked ? "下次打开程序即可自动连接校园网。" : "点击“连接网络”即可连接校园网。", false); WriteLog("配置已保存，密码已使用 Windows 加密。"); } catch (Exception ex) { ShowFailure(ex); } };
             cancel.Click += (sender, e) => { if (operation != null) operation.Cancel(); }; connect.Click += async (sender, e) => await ConnectAsync();
@@ -189,6 +203,7 @@ namespace CampusConnect
             circle.Controls.Add(new IconView { IconName = icon, Bounds = new Rectangle(8, 8, 24, 24) }); card.Controls.Add(circle);
             var label = UiLabel(caption, 11.5F); label.ForeColor = Muted; label.Bounds = new Rectangle(62, 15, 100, 23); card.Controls.Add(label);
             output.Text = value; output.Font = Theme.Font(13); output.ForeColor = Muted; output.BackColor = Color.Transparent; output.Bounds = new Rectangle(62, 40, 100, 23); card.Controls.Add(output);
+            if (output == recentValue) { label.Top = 10; output.Top = 31; output.Height = 40; }
             card.Resize += (sender, e) =>
             {
                 bool compact = card.Width < 165;
@@ -205,6 +220,7 @@ namespace CampusConnect
         // path left by an upgrade) triggers a write, so loading the state is quiet.
         void SyncStartupEntry()
         {
+            if (!String.IsNullOrEmpty(screenshot)) return;
             bool wanted = startWithWindows.Checked;
             try
             {
