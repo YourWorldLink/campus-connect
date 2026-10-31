@@ -174,6 +174,7 @@ namespace CampusConnect
             return Math.Min(5 << Math.Min(attempt - 1, 4), 60);
         }
         public static bool Expired(TimeSpan elapsed) { return elapsed > Limit; }
+        public static bool WaitForStartupWifi(TimeSpan elapsed) { return elapsed < TimeSpan.FromMinutes(2); }
     }
 
     public static class LaunchPolicy

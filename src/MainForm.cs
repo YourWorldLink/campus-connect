@@ -248,9 +248,18 @@ namespace CampusConnect
             }
             if (LaunchPolicy.ShouldConnect(preview, autostart, settings.AutoConnect, settings.HasCredentials))
             {
-                // Launched at logon, the WLAN stack is often still coming up.
-                await Task.Delay(autostart ? 12000 : 700);
+                if (autostart)
+                {
+                    SetStatus("正在启动自动连接", "开机自动连接已启动，正在准备网络。", false);
+                    WriteLog("开机自动连接已启动。");
+                }
+                else await Task.Delay(700);
                 if (!closing) await ConnectAsync(autostart);
+            }
+            else if (autostart && !settings.HasCredentials)
+            {
+                SetStatus("等待配置", "开机自动连接需要先保存账号和密码。", true);
+                WriteLog("开机自动连接未启动：请先保存账号和密码。");
             }
         }
         void SetStatus(string title, string description, bool error)
@@ -473,7 +482,7 @@ namespace CampusConnect
         {
             if (busy || closing) return;
             monitorArmed = false;
-            try { if (monitorRetry) Validation.Check(settings, true); else SaveCurrent(true); }
+            try { if (retryOnStartup) Validation.Check(settings, true); else SaveCurrent(true); }
             catch (Exception ex) { ShowFailure(ex); return; }
             busy = true;
             if (nearbyChoose != null) nearbyChoose.Enabled = false;
@@ -537,8 +546,12 @@ namespace CampusConnect
                 catch (OperationCanceledException) { throw; }
                 catch (PortalRejectedException) { throw; }
                 catch (NetworkChangedException) { throw; }
-                // Wi-Fi 配置被删掉了（忘记网络），重试不会自愈，直接停下来说清楚。
-                catch (Wifi.WifiProfileMissingException) { throw; }
+                // 开机时无线服务可能尚未就绪；持续缺失后再提示重新保存网络。
+                catch (Wifi.WifiProfileMissingException)
+                {
+                    if (monitorRetry || !RetryPolicy.WaitForStartupWifi(DateTime.UtcNow - started)) throw;
+                    WriteLog("Wi-Fi 配置暂不可用，等待无线服务启动后重试。");
+                }
                 catch (ArgumentException) { throw; }
                 catch (Exception ex)
                 {
