@@ -84,6 +84,22 @@ static class CoreTests
             Check(LaunchPolicy.ShouldConnect(false, false, true, true), "normal launch connects when enabled");
             Check(!LaunchPolicy.ShouldConnect(false, true, true, false), "startup requires credentials");
             Check(!LaunchPolicy.ShouldConnect(true, true, true, true), "preview never connects");
+            string startupTestKey = @"Software\CampusConnectTests\Startup-" + Guid.NewGuid().ToString("N");
+            try
+            {
+                var write = typeof(Startup).GetMethod("WriteAndVerify", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+                string command = Validation.QuoteArgument(@"C:\Example Path\CampusConnect.exe") + " --autostart";
+                using (var key = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(startupTestKey))
+                    write.Invoke(null, new object[] { key, "CampusConnect", true, command });
+                using (var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(startupTestKey, true))
+                {
+                    Check((string)key.GetValue("CampusConnect") == command, "startup entry persists when reopened");
+                    write.Invoke(null, new object[] { key, "CampusConnect", false, command });
+                }
+                using (var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(startupTestKey))
+                    Check(key.GetValue("CampusConnect") == null, "startup entry stays removed when reopened");
+            }
+            finally { Microsoft.Win32.Registry.CurrentUser.DeleteSubKey(startupTestKey, false); }
             Check(!MonitorPolicy.ShouldReconnect(true, true, NetworkScope.Campus, 1), "one failed probe does not reconnect");
             Check(MonitorPolicy.ShouldReconnect(true, true, NetworkScope.Campus, 2), "two failed probes trigger reconnect on target network");
             Check(MonitorPolicy.ShouldReconnect(true, true, NetworkScope.Disconnected, 2), "fully disconnected campus network can reconnect");

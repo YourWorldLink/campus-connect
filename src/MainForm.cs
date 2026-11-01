@@ -41,6 +41,7 @@ namespace CampusConnect
         string browserDirectory;
         CancellationTokenSource operation;
         bool busy, closing;
+        bool syncingStartup;
         bool portalAuthenticated;
         bool statusHasError;
         bool monitorArmed, monitorChecking, settingsOpen;

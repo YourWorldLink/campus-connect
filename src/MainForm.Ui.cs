@@ -220,13 +220,21 @@ namespace CampusConnect
         // path left by an upgrade) triggers a write, so loading the state is quiet.
         void SyncStartupEntry()
         {
-            if (!String.IsNullOrEmpty(screenshot)) return;
+            if (!String.IsNullOrEmpty(screenshot) || syncingStartup) return;
             bool wanted = startWithWindows.Checked;
+            syncingStartup = true;
             try
             {
-                if (wanted ? Startup.IsCurrent() : !Startup.IsEnabled()) return;
-                Startup.SetEnabled(wanted);
-                WriteLog(wanted ? "已设置开机自动启动。" : "已取消开机自动启动。");
+                if (!(wanted ? Startup.IsCurrent() : !Startup.IsEnabled()))
+                {
+                    Startup.SetEnabled(wanted);
+                    WriteLog(wanted ? "已设置开机自动启动。" : "已取消开机自动启动。");
+                }
+                if (wanted && Startup.IsDisabledByWindows())
+                {
+                    WriteLog("Windows 启动应用设置已禁用本工具，请在系统设置中启用。");
+                    MessageBox.Show(this, "Windows 已禁用本工具的启动项。请打开 Windows 设置 → 应用 → 启动，启用“校园网一键连接”。", "开机自启动", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                }
             }
             catch (Exception ex)
             {
@@ -234,6 +242,7 @@ namespace CampusConnect
                 try { startWithWindows.Checked = Startup.IsEnabled(); }
                 catch (Exception) { }
             }
+            finally { syncingStartup = false; }
         }
         void ShowAbout()
         {

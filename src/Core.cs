@@ -258,8 +258,24 @@ namespace CampusConnect
             using (var key = Registry.CurrentUser.CreateSubKey(RunKey))
             {
                 if (key == null) throw new InvalidOperationException("无法写入 Windows 启动项，未能修改开机自启动设置。");
-                if (enabled) key.SetValue(ValueName, Command(), RegistryValueKind.String);
-                else key.DeleteValue(ValueName, false);
+                WriteAndVerify(key, ValueName, enabled, Command());
+            }
+        }
+        static void WriteAndVerify(RegistryKey key, string name, bool enabled, string command)
+        {
+            if (enabled) key.SetValue(name, command, RegistryValueKind.String);
+            else key.DeleteValue(name, false);
+            key.Flush();
+            var actual = key.GetValue(name) as string;
+            if (enabled ? !String.Equals(actual, command, StringComparison.OrdinalIgnoreCase) : key.GetValue(name) != null)
+                throw new InvalidOperationException("Windows 启动项未能保存，请检查系统安全软件或启动应用设置。");
+        }
+        public static bool IsDisabledByWindows()
+        {
+            using (var key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run", false))
+            {
+                var value = key == null ? null : key.GetValue(ValueName) as byte[];
+                return value != null && value.Length > 0 && (value[0] == 3 || value[0] == 7);
             }
         }
     }
