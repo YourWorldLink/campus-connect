@@ -41,7 +41,7 @@ function (config) {
     }
     if (!config.submit) return { state: 'waiting', message: '等待认证结果。' };
     const captcha = find('input[name*="captcha" i],input[id*="captcha" i],input[name*="verifycode" i],input[placeholder*="验证码"]');
-    if (captcha) return { state: 'manual', message: '认证页需要验证码，请在右侧页面完成登录。' };
+    if (captcha) return { state: 'manual', message: '认证页需要验证码，请在“认证页面”完成登录。' };
     const username = find(config.usernameSelector || '#username,input[name="username"],#user_name,input[name="user_name"],input[autocomplete="username"]') ||
       find('input[type="text"],input[type="tel"],input[type="email"],input:not([type])');
     if (!username || !password) return { state: 'missing', message: '未找到账号或密码输入框。请检查认证网址，或打开设置中的连接页填写对应的 CSS 选择器。' };

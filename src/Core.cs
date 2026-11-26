@@ -22,9 +22,8 @@ namespace CampusConnect
         [DataMember] public int Version = 1;
         [DataMember] public string Ssid = "";
         [DataMember] public string ProfileName = "";
-        // 预填的是示例地址：保留深澜 SRun 的路径格式，但主机名为占位值，
-        // 避免把作者所在学校的认证服务器地址随源码公开。首次使用需改成实际地址。
-        [DataMember] public string PortalUrl = "http://portal.example.edu.cn/srun_portal_pc?ac_id=1&theme=pro";
+        // 认证网址使用示例域名，首次使用时需替换为学校提供的地址。
+        [DataMember] public string PortalUrl = "https://portal.example.com";
         [DataMember] public string Username = "";
         [DataMember] public string EncryptedPassword = "";
         [DataMember] public bool AutoConnect = true;
@@ -39,8 +38,8 @@ namespace CampusConnect
         public bool HasCredentials { get { return !String.IsNullOrWhiteSpace(Username) && !String.IsNullOrEmpty(Password); } }
         public static Settings CreateScreenshotExample()
         {
-            return new Settings { Ssid = "校园 Wi-Fi", PortalUrl = "https://example.com",
-                Username = "校园网账号", Password = "示例密码", AutoConnect = true };
+            return new Settings { Ssid = "示例校园 Wi-Fi", Username = "示例账号",
+                Password = "示例密码", AutoConnect = true };
         }
     }
 

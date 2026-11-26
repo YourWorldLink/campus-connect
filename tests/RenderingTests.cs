@@ -1,5 +1,6 @@
 using System;
 using System.Drawing;
+using System.Reflection;
 using System.Windows.Forms;
 using CampusConnect;
 
@@ -29,6 +30,33 @@ static class RenderingTests
             return bitmap;
         }
     }
+    static void CheckLightColors(Control expected, Control actual)
+    {
+        if (expected.GetType() != actual.GetType() || expected.Controls.Count != actual.Controls.Count ||
+            expected.BackColor.ToArgb() != actual.BackColor.ToArgb() || expected.ForeColor.ToArgb() != actual.ForeColor.ToArgb())
+            throw new Exception("Restored light theme differs from a fresh launch on " + actual.GetType().Name);
+        for (int i = 0; i < expected.Controls.Count; i++)
+            CheckLightColors(expected.Controls[i], actual.Controls[i]);
+    }
+
+    static void CheckThemeSwitch()
+    {
+        // Screenshot mode constructs the real UI with example settings; no form needs to be shown.
+        using (var light = new MainForm(true, "example.png", false, false))
+        using (var restored = new MainForm(true, "example.png", false, true))
+        {
+            var apply = typeof(MainForm).GetMethod("ApplyAppearance", BindingFlags.Instance | BindingFlags.NonPublic);
+            for (int cycle = 0; cycle < 2; cycle++)
+            {
+                if (restored.Controls[0].BackColor.ToArgb() == light.Controls[0].BackColor.ToArgb())
+                    throw new Exception("Dark layout did not change color.");
+                apply.Invoke(restored, new object[] { false });
+                CheckLightColors(light, restored);
+                if (cycle == 0) apply.Invoke(restored, new object[] { true });
+            }
+        }
+    }
+
     [STAThread]
     static int Main()
     {
@@ -72,6 +100,8 @@ static class RenderingTests
                 }
             }
             Console.WriteLine("PASS " + checks + " rendering states: rounded/ pill, primary/ secondary, hover/ press/ disabled/ selected, resized, custom parent artwork and WM_PRINT");
+            CheckThemeSwitch();
+            Console.WriteLine("PASS dark startup and repeated theme switches restore all light control colors");
             return 0;
         }
         catch (Exception ex) { Console.WriteLine(ex); return 1; }

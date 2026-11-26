@@ -222,7 +222,7 @@ namespace CampusConnect
             accountValue.Text = settings.HasCredentials ? "已填写" : "未认证";
             recentValue.Text = String.IsNullOrEmpty(settings.LastConnected) ? "--" : settings.LastConnected.Replace(" ", "\n");
             networkValue.Text = String.IsNullOrEmpty(settings.Ssid) ? "当前网络" : "校园 Wi-Fi";
-            if (status.Text == "等待连接") SetStatus(settings.HasCredentials ? "已配置完成" : "等待配置", settings.HasCredentials ? "点击“连接网络”即可连接校园网。" : "填写左侧配置，即可一键连接校园网。", false);
+            if (status.Text == "等待连接") SetStatus(settings.HasCredentials ? "准备连接" : "等待配置", settings.HasCredentials ? "账号已保存，可以连接校园网。" : "先在连接配置中填写认证网址、账号和密码。", false);
         }
         void SaveCurrent(bool connecting)
         {
@@ -274,9 +274,7 @@ namespace CampusConnect
                 trayIcon.Text = "校园网一键连接 - " + title;
                 trayIcon.Icon = error || title == "需要页面操作" ? SystemIcons.Warning : title == "已连接，可以上网" ? SystemIcons.Information : Icon ?? SystemIcons.Application;
             }
-            status.ForeColor = error ? (Theme.Dark ? Color.FromArgb(255, 155, 130) : Color.FromArgb(181, 78, 49)) : Ink;
-            badgeLabel.Text = error ? "●  请检查" : busy ? "●  连接中" : "●  已就绪";
-            badgeLabel.ForeColor = error ? status.ForeColor : Teal;
+            status.ForeColor = error ? Color.FromArgb(255, 211, 178) : Color.White;
             if (error) connectionValue.Text = "未完成";
             else if (title == "正在连接") connectionValue.Text = "连接中";
             else if (title == "正在认证") { connectionValue.Text = "Wi-Fi 就绪"; accountValue.Text = "认证中"; }
@@ -302,11 +300,14 @@ namespace CampusConnect
         {
             Theme.Dark = dark;
             ApplyColors(this, dark);
+            status.ForeColor = statusHasError ? Color.FromArgb(255, 211, 178) : Color.White;
             Invalidate(true);
         }
 
         void ApplyColors(Control control, bool dark)
         {
+            // Read children's original colors while inherited colors still come from the unmodified parent.
+            foreach (Control child in control.Controls) ApplyColors(child, dark);
             Color[] colors;
             var card = control as Card;
             if (!originalColors.TryGetValue(control, out colors))
@@ -328,7 +329,6 @@ namespace CampusConnect
                 if (!originalIconColors.TryGetValue(icon, out original)) { original = icon.IconColor; originalIconColors[icon] = original; }
                 icon.IconColor = dark ? DarkText(original) : original;
             }
-            foreach (Control child in control.Controls) ApplyColors(child, dark);
             control.Invalidate();
         }
         static Color DarkBackground(Color color)
@@ -345,6 +345,7 @@ namespace CampusConnect
         {
             if (color == Color.Transparent || color.IsEmpty || color.A == 0) return color;
             if (color.ToArgb() == Theme.Ink.ToArgb() || color.ToArgb() == Theme.Muted.ToArgb() || color.ToArgb() == Theme.Green.ToArgb() || color.ToArgb() == Color.White.ToArgb()) return color;
+            if (color.ToArgb() == Color.FromArgb(83, 105, 110).ToArgb()) return Theme.Muted;
             if (color.R > color.G * 1.3 && color.R > color.B * 1.3) return Color.FromArgb(255, 155, 130);
             if (color.G > color.R * 1.2 && color.G > color.B * 0.95) return Theme.Green;
             return color.GetBrightness() > 0.55F ? Theme.Muted : Theme.Ink;
@@ -465,7 +466,7 @@ namespace CampusConnect
         async Task<PortalReport> InspectAsync(Uri origin, bool submit)
         {
             if (!Validation.SameOrigin(origin, browser.CoreWebView2.Source))
-                return new PortalReport { State = "redirect", Message = "认证页跳转到了其他地址，自动填写已暂停。请在右侧确认页面，并将认证网址更新为学校实际使用的地址。" };
+                return new PortalReport { State = "redirect", Message = "认证页跳转到了其他地址，自动填写已暂停。请在“认证页面”确认，并将认证网址更新为学校实际使用的地址。" };
             string result = await browser.ExecuteScriptAsync(PortalScript.Build(settings, submit));
             if (result == "null" || result == "undefined") return new PortalReport { State = "waiting", Message = "等待认证页面加载。" };
             return Json.Read<PortalReport>(result);
@@ -520,7 +521,7 @@ namespace CampusConnect
                 operation.Dispose();
                 operation = null;
                 busy = false;
-                if (!closing) { fields.Enabled = true; connect.Enabled = save.Enabled = navSettings.Enabled = true; cancel.Visible = false; connect.Text = "连接网络"; badgeLabel.Text = statusHasError ? "●  请检查" : "●  已就绪"; if (nearbyChoose != null) nearbyChoose.Enabled = !nearbyScanning && nearbyList.SelectedItems.Count == 1; }
+                if (!closing) { fields.Enabled = true; connect.Enabled = save.Enabled = navSettings.Enabled = true; cancel.Visible = false; connect.Text = "连接网络"; if (nearbyChoose != null) nearbyChoose.Enabled = !nearbyScanning && nearbyList.SelectedItems.Count == 1; }
             }
         }
         // Wi-Fi 就绪通常在一分钟内，给足余量但不要永远空转：不在校园网时（例如在家）
@@ -723,7 +724,7 @@ namespace CampusConnect
         }
         void ShowAdvanced()
         {
-            using (var dialog = new Form { Text = "设置", Size = new Size(620, 650), FormBorderStyle = FormBorderStyle.FixedDialog,
+            using (var dialog = new Form { Text = "设置", ClientSize = new Size(602, Math.Min(610, Screen.FromControl(this).WorkingArea.Height - 88)), FormBorderStyle = FormBorderStyle.FixedDialog,
                 StartPosition = FormStartPosition.CenterParent, MaximizeBox = false, MinimizeBox = false, Font = Theme.Font(16), BackColor = Color.White })
             {
                 var pages = new PageDeck { Dock = DockStyle.Fill, Padding = new Padding(16, 8, 16, 0) };
@@ -734,33 +735,44 @@ namespace CampusConnect
                 var panel = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(16, 8, 16, 12), ColumnCount = 1, RowCount = 0 };
                 general.AutoScroll = true;
                 general.Controls.Add(panel);
-                var note = LabelText("通常保持留空即可。仅在 Wi-Fi 配置名不同，\n或认证页面无法自动识别时修改。", 11);
-                note.ForeColor = Muted;
-                AddRow(panel, note, 56);
                 var profile = new TextBox { Text = pendingProfile ?? settings.ProfileName };
                 var accountSelector = new TextBox { Text = settings.UsernameSelector };
                 var secretSelector = new TextBox { Text = settings.PasswordSelector };
                 var loginSelector = new TextBox { Text = settings.LoginSelector };
                 var provider = new TextBox { Text = settings.Provider ?? "" };
-                ConfigField(panel, "Windows Wi-Fi 配置名称", profile); AddRow(panel, new Panel(), 10);
-                ConfigField(panel, "账号输入框 CSS 选择器（如 #username）", accountSelector); AddRow(panel, new Panel(), 10);
-                ConfigField(panel, "密码输入框 CSS 选择器（如 #password）", secretSelector); AddRow(panel, new Panel(), 10);
-                ConfigField(panel, "登录按钮 CSS 选择器（如 #login）", loginSelector);
-                AddRow(panel, new Panel(), 10);
-                ConfigField(panel, "运营商名称（可选，需与页面一致）", provider);
-                AddRow(panel, new Panel(), 10);
+                AddRow(panel, LabelText("连接偏好", 15, true), 40);
                 var monitor = new CheckBox { Text = "断线后自动重连指定校园 Wi-Fi", Checked = settings.MonitorConnection, Dock = DockStyle.Fill, Font = Theme.Font(16), Margin = Padding.Empty };
                 AddRow(panel, monitor, 40);
+                ConfigField(panel, "Windows Wi-Fi 配置名称（与网络名相同时留空）", profile);
+                AddRow(panel, new Panel(), 8);
+                ConfigField(panel, "运营商名称（按认证页面填写，可留空）", provider);
+                AddRow(panel, new Panel(), 16);
+                var toggleSelectors = new ActionButton { Width = 218, Height = 38, Anchor = AnchorStyles.Left };
+                AddRow(panel, toggleSelectors, 46);
+                var selectors = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 1, Margin = Padding.Empty };
+                ConfigField(selectors, "账号输入框 CSS 选择器（如 #username）", accountSelector);
+                ConfigField(selectors, "密码输入框 CSS 选择器（如 #password）", secretSelector);
+                ConfigField(selectors, "登录按钮 CSS 选择器（如 #login）", loginSelector);
+                int selectorsRow = panel.RowCount++;
+                panel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+                panel.Controls.Add(selectors, 0, selectorsRow);
+                bool expanded = new[] { accountSelector, secretSelector, loginSelector }.Any(box => !String.IsNullOrWhiteSpace(box.Text));
+                Action showSelectors = () =>
+                {
+                    selectors.Visible = expanded;
+                    toggleSelectors.Text = expanded ? "收起认证字段设置" : "展开认证字段设置";
+                    toggleSelectors.Invalidate();
+                };
+                showSelectors();
+                toggleSelectors.Click += (sender, e) => { expanded = !expanded; showSelectors(); };
                 var appearancePanel = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(16, 8, 16, 12), ColumnCount = 1, RowCount = 0 };
                 appearancePage.Controls.Add(appearancePanel);
-                AddRow(appearancePanel, LabelText("主题外观", 11.5F, true), 34);
+                AddRow(appearancePanel, LabelText("主题外观", 15, true), 40);
                 bool darkSelected = settings.Appearance == "dark";
                 var choices = new FlowLayoutPanel { Dock = DockStyle.Fill, WrapContents = false, Margin = Padding.Empty };
-                var lightChoice = new ActionButton { Text = "浅色", Pill = true, Size = new Size(100, 40), Selected = !darkSelected, Margin = new Padding(0, 0, 10, 0) };
-                var darkChoice = new ActionButton { Text = "深色", Pill = true, Size = new Size(100, 40), Selected = darkSelected, Margin = Padding.Empty };
-                lightChoice.Click += (sender, e) => { darkSelected = false; lightChoice.Selected = true; darkChoice.Selected = false; lightChoice.Invalidate(); darkChoice.Invalidate(); };
-                darkChoice.Click += (sender, e) => { darkSelected = true; lightChoice.Selected = false; darkChoice.Selected = true; lightChoice.Invalidate(); darkChoice.Invalidate(); };
-                choices.Controls.Add(lightChoice); choices.Controls.Add(darkChoice); AddRow(appearancePanel, choices, 46);
+                var lightChoice = new ThemeChoice(false) { Checked = !darkSelected, Margin = new Padding(0, 4, 14, 0) };
+                var darkChoice = new ThemeChoice(true) { Checked = darkSelected, Margin = new Padding(0, 4, 0, 0) };
+                choices.Controls.Add(lightChoice); choices.Controls.Add(darkChoice); AddRow(appearancePanel, choices, 122);
                 var done = new ActionButton { Text = "应用设置", Primary = true, IconName = "save", Size = new Size(138, 40), Margin = Padding.Empty };
                 var actions = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 64, FlowDirection = FlowDirection.RightToLeft, Padding = new Padding(24, 10, 24, 10), BackColor = Color.White };
                 actions.Controls.Add(done); dialog.Controls.Add(actions);
@@ -778,7 +790,7 @@ namespace CampusConnect
                         settings.UsernameSelector = accountSelector.Text.Trim();
                         settings.PasswordSelector = secretSelector.Text.Trim();
                         settings.LoginSelector = loginSelector.Text.Trim();
-                        settings.Appearance = darkSelected ? "dark" : "light";
+                        settings.Appearance = darkChoice.Checked ? "dark" : "light";
                         settings.Provider = provider.Text.Trim();
                         settings.MonitorConnection = monitor.Checked;
                         SaveCurrent(false);
@@ -803,7 +815,7 @@ namespace CampusConnect
                 var logActions = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 54, FlowDirection = FlowDirection.RightToLeft, Padding = new Padding(0, 10, 0, 0), BackColor = Color.White };
                 var clear = new ActionButton { Text = "清除日志", Size = new Size(110, 38), Margin = Padding.Empty };
                 var refresh = new ActionButton { Text = "刷新", Size = new Size(90, 38), Margin = new Padding(0, 0, 10, 0) };
-                Action loadLog = () => { try { logText.Text = LogStore.Read(); logText.SelectionStart = logText.TextLength; logText.ScrollToCaret(); } catch (Exception ex) { MessageBox.Show(dialog, "无法读取日志：" + ex.Message); } };
+                Action loadLog = () => { try { logText.Text = String.IsNullOrEmpty(screenshot) ? LogStore.Read() : ""; logText.SelectionStart = logText.TextLength; logText.ScrollToCaret(); } catch (Exception ex) { MessageBox.Show(dialog, "无法读取日志：" + ex.Message); } };
                 refresh.Click += (sender, e) => loadLog();
                 clear.Click += (sender, e) =>
                 {

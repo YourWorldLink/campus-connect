@@ -24,8 +24,8 @@ static class CoreTests
         try
         {
             var screenshotExample = Settings.CreateScreenshotExample();
-            Check(screenshotExample.Ssid == "校园 Wi-Fi" && screenshotExample.PortalUrl == "https://example.com" &&
-                screenshotExample.Username == "校园网账号" && screenshotExample.Password == "示例密码", "screenshots use fixed example credentials");
+            Check(screenshotExample.Ssid == "示例校园 Wi-Fi" && screenshotExample.PortalUrl == "https://portal.example.com" &&
+                screenshotExample.Username == "示例账号" && screenshotExample.Password == "示例密码", "screenshots use fixed example credentials");
             Check(Validation.Portal("http://192.0.2.10/srun_portal_pc?ac_id=1&theme=pro").Host == "192.0.2.10", "SRun URL preserved");
             Reject(() => Validation.Portal("javascript:alert(1)"), "reject script URL");
             Reject(() => Validation.Portal("file:///C:/secret"), "reject local-file URL");
